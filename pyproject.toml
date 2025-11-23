@@ -4,25 +4,18 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "procoaching_custom_hr"
+version = "0.0.1"
 authors = [
     {name = "Pro Coaching", email = "info@pro-coaching.co.uk"}
 ]
-dynamic = ["version", "description"]
+description = "Custom HR modifications for Pro Coaching"
+readme = "README.md"
+requires-python = ">=3.10"
 dependencies = [
     "frappe"
 ]
 
+[project.urls]
+Home = "https://github.com/Gunasekhar17/procoaching_custom_hr"
+
 [tool.bench.dev-dependencies]
-```
-
-4. Click **"Commit changes..."** → **"Commit changes"**
-
----
-
-## **STEP 3: Create `requirements.txt` (Root Level)**
-
-1. Click **"Add file"** → **"Create new file"**
-2. Filename: `requirements.txt`
-3. **Paste this code:**
-```
-frappe
