@@ -214,7 +214,7 @@ app_license = "MIT"
 #	"procoaching_custom_hr.auth.validate"
 # ]
 
-# CRITICAL: Override Roster get_events method
+# CRITICAL: Override Roster get_events method - FIXED PATH
 override_whitelisted_methods = {
-    "hrms.hr.page.roster.roster.get_events": "procoaching_custom_hr.overrides.roster_override.get_events"
+    "hrms.api.roster.get_events": "procoaching_custom_hr.overrides.roster_override.get_events"
 }
