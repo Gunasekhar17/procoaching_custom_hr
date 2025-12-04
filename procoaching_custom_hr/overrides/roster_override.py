@@ -6,13 +6,16 @@ import json
 def get_events(start, end, filters=None):
     """
     Safe Version: Filters ONLY by 'custom_published'.
-    Removed: Training icons and Document indicators (to prevent 500 Error on missing fields).
+    Strict Mode: 'HR User' removed to ensure only Managers see unpublished shifts.
     """
     
     # Get current user and roles
     user = frappe.session.user
     user_roles = frappe.get_roles(user)
-    management_roles = ['HR Manager', 'System Manager', 'Administrator', 'HR User', 'Shift Manager']
+    
+    # STRICT MANAGEMENT ROLES
+    # Removed 'HR User' to prevent regular staff with minor HR permissions from seeing hidden shifts.
+    management_roles = ['HR Manager', 'System Manager', 'Administrator', 'Shift Manager']
     has_management_access = any(role in management_roles for role in user_roles)
     
     # Parse filters
@@ -31,10 +34,11 @@ def get_events(start, end, filters=None):
     ]
     
     # CRITICAL: Publication filter for non-managers
+    # We use IFNULL to ensure that if the checkbox is NULL (never touched), it counts as 0 (Unpublished/Hidden)
     if not has_management_access:
-        conditions.append("`tabShift Assignment`.custom_published = 1")
+        conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
     
-    # Add optional filters from roster UI (Standard fields only)
+    # Add optional filters from roster UI
     if filters.get('company'):
         conditions.append(f"`tabShift Assignment`.company = {frappe.db.escape(filters.get('company'))}")
     if filters.get('department'):
@@ -49,8 +53,7 @@ def get_events(start, end, filters=None):
     # Build WHERE clause
     where_clause = " AND ".join(conditions)
     
-    # Fetch shifts WITHOUT the missing custom columns
-    # Removed: custom_briefing_document, custom_risk_assessment, JOIN tabEmployee
+    # Fetch shifts WITHOUT the missing custom columns (to prevent 500 errors)
     shifts = frappe.db.sql(f"""
         SELECT 
             `tabShift Assignment`.name,
@@ -62,7 +65,8 @@ def get_events(start, end, filters=None):
             `tabShift Assignment`.status,
             `tabShift Assignment`.custom_published,
             `tabShift Assignment`.company,
-            `tabShift Assignment`.department
+            `tabShift Assignment`.department,
+            `tabShift Assignment`.color
         FROM 
             `tabShift Assignment`
         WHERE 
@@ -83,12 +87,15 @@ def get_events(start, end, filters=None):
     # Format events for calendar display
     events = []
     for shift in shifts:
-        # Combined Title (Removed badges logic for now)
+        # Combined Title
         title = f"{shift.employee_name} ({shift.shift_type})"
         
         # Determine Color
-        # Green (#10b981) for published, Orange (#f59e0b) for unpublished
-        bg_color = '#10b981' if shift.custom_published else '#f59e0b'
+        # Green (#28a745) for published, Orange (#fd7e14) for unpublished
+        if shift.custom_published:
+             bg_color = '#28a745' # Green
+        else:
+             bg_color = '#fd7e14' # Orange
 
         # Create event
         event = {
