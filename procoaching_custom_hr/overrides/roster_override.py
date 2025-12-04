@@ -5,16 +5,20 @@ import json
 @frappe.whitelist()
 def get_events(start, end, filters=None):
     """
-    Safe Version: Filters ONLY by 'custom_published'.
-    Strict Mode: 'HR User' removed to ensure only Managers see unpublished shifts.
+    Roster Override Logic:
+    1. HR Managers / System Managers: View ALL shifts (Published & Unpublished).
+       - Published = Green
+       - Unpublished = Orange
+    2. Staff / Employees: View ONLY Published shifts.
+       - Unpublished shifts are strictly hidden via SQL.
     """
     
     # Get current user and roles
     user = frappe.session.user
     user_roles = frappe.get_roles(user)
     
-    # STRICT MANAGEMENT ROLES
-    # Removed 'HR User' to prevent regular staff with minor HR permissions from seeing hidden shifts.
+    # DEFINITION: Who sees Unpublished (Orange) shifts?
+    # HR Manager, System Manager, Administrator, Shift Manager
     management_roles = ['HR Manager', 'System Manager', 'Administrator', 'Shift Manager']
     has_management_access = any(role in management_roles for role in user_roles)
     
@@ -33,8 +37,9 @@ def get_events(start, end, filters=None):
         "`tabShift Assignment`.status = 'Active'"
     ]
     
-    # CRITICAL: Publication filter for non-managers
-    # We use IFNULL to ensure that if the checkbox is NULL (never touched), it counts as 0 (Unpublished/Hidden)
+    # CRITICAL LOGIC: Staff Visibility
+    # If the user is NOT a manager, enforce that they can only see Published shifts.
+    # We use IFNULL to treat NULL (untouched checkboxes) as 0 (Unpublished).
     if not has_management_access:
         conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
     
