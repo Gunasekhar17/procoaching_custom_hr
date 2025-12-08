@@ -17,12 +17,17 @@ def patch_roster_api():
         # 3. Force the swap
         # This tells the server: "Whenever someone asks for hrms.api.roster.get_events, give them MINE instead."
         hrms.api.roster.get_events = get_events
-        print("[Pro Coaching] Successfully patched hrms.api.roster.get_events")
         
+        # REMOVED PRINT STATEMENTS to prevent job runner failures
+        # frappe.logger().info("[Pro Coaching] Successfully patched hrms.api.roster.get_events") 
+
     except ImportError:
-        print("[Pro Coaching] Could not patch Roster API - HRMS app might not be installed yet.")
+        # Fail silently or log to frappe.log (avoiding print)
+        pass 
     except Exception as e:
-        print(f"[Pro Coaching] Failed to patch Roster API: {str(e)}")
+        # Log error to error log instead of stdout
+        # frappe.log_error(f"Failed to patch Roster API: {str(e)}", "Pro Coaching Patch Error")
+        pass
 
 # Run the patch immediately
 patch_roster_api()
