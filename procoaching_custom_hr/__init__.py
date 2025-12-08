@@ -18,8 +18,6 @@ def patch_roster_api():
         # This tells the server: "Whenever someone asks for hrms.api.roster.get_events, give them MINE instead."
         hrms.api.roster.get_events = get_events
         
-        # REMOVED PRINT STATEMENTS to prevent job runner failures
-        # frappe.logger().info("[Pro Coaching] Successfully patched hrms.api.roster.get_events") 
 
     except ImportError:
         # Fail silently or log to frappe.log (avoiding print)
