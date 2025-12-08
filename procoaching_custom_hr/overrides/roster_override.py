@@ -35,77 +35,103 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     elif isinstance(filters, str):
         try:
             filters = json.loads(filters)
-        except:
+        except (json.JSONDecodeError, TypeError, ValueError):
             filters = {}
 
     # Merge Roster API specific filters if they exist
     if employee_filters:
         if isinstance(employee_filters, str):
-            employee_filters = json.loads(employee_filters)
+            try:
+                employee_filters = json.loads(employee_filters)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                employee_filters = {}
         filters.update(employee_filters)
         
     if shift_filters:
         if isinstance(shift_filters, str):
-            shift_filters = json.loads(shift_filters)
+            try:
+                shift_filters = json.loads(shift_filters)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                shift_filters = {}
         filters.update(shift_filters)
     
-    # 4. Build base conditions
+    # 4. Build base conditions and values for parameterized query
     conditions = [
         "`tabShift Assignment`.docstatus < 2",
         "`tabShift Assignment`.status = 'Active'"
     ]
+    
+    # Initialize values dictionary with dates
+    values = {
+        'start': start,
+        'end': end
+    }
     
     # CRITICAL: Publication filter for non-managers
     # IFNULL checks if the checkbox is NULL (untouched) and treats it as 0 (Hidden)
     if not has_management_access:
         conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
     
-    # 5. Apply SQL Filters
+    # 5. Apply SQL Filters (FIXED: Using parameterized queries to prevent SQL injection)
     if filters.get('company'):
-        conditions.append(f"`tabShift Assignment`.company = {frappe.db.escape(filters.get('company'))}")
+        conditions.append("`tabShift Assignment`.company = %(company)s")
+        values['company'] = filters.get('company')
+        
     if filters.get('department'):
-        conditions.append(f"`tabShift Assignment`.department = {frappe.db.escape(filters.get('department'))}")
+        conditions.append("`tabShift Assignment`.department = %(department)s")
+        values['department'] = filters.get('department')
+        
     if filters.get('designation'):
-        conditions.append(f"`tabShift Assignment`.designation = {frappe.db.escape(filters.get('designation'))}")
+        conditions.append("`tabShift Assignment`.designation = %(designation)s")
+        values['designation'] = filters.get('designation')
+        
     if filters.get('employee'):
-        conditions.append(f"`tabShift Assignment`.employee = {frappe.db.escape(filters.get('employee'))}")
+        conditions.append("`tabShift Assignment`.employee = %(employee)s")
+        values['employee'] = filters.get('employee')
+        
     if filters.get('shift_type'):
-        conditions.append(f"`tabShift Assignment`.shift_type = {frappe.db.escape(filters.get('shift_type'))}")
+        conditions.append("`tabShift Assignment`.shift_type = %(shift_type)s")
+        values['shift_type'] = filters.get('shift_type')
     
     where_clause = " AND ".join(conditions)
     
     # 6. Fetch Data
     # Note: We do NOT fetch custom_first_aider etc. here to avoid 500 errors if fields are missing.
     # We strictly focus on the 'custom_published' column.
-    shifts = frappe.db.sql(f"""
-        SELECT 
-            `tabShift Assignment`.name,
-            `tabShift Assignment`.employee,
-            `tabShift Assignment`.employee_name,
-            `tabShift Assignment`.shift_type,
-            `tabShift Assignment`.start_date,
-            `tabShift Assignment`.end_date,
-            `tabShift Assignment`.status,
-            `tabShift Assignment`.custom_published,
-            `tabShift Assignment`.company,
-            `tabShift Assignment`.department,
-            `tabShift Assignment`.color
-        FROM 
-            `tabShift Assignment`
-        WHERE 
-            {where_clause}
-            AND (
-                (`tabShift Assignment`.start_date BETWEEN %(start)s AND %(end)s)
-                OR (`tabShift Assignment`.end_date BETWEEN %(start)s AND %(end)s)
-                OR (`tabShift Assignment`.start_date <= %(start)s AND `tabShift Assignment`.end_date >= %(end)s)
-            )
-        ORDER BY 
-            `tabShift Assignment`.start_date, 
-            `tabShift Assignment`.employee_name
-    """, {
-        'start': start,
-        'end': end
-    }, as_dict=True)
+    try:
+        shifts = frappe.db.sql(f"""
+            SELECT 
+                `tabShift Assignment`.name,
+                `tabShift Assignment`.employee,
+                `tabShift Assignment`.employee_name,
+                `tabShift Assignment`.shift_type,
+                `tabShift Assignment`.start_date,
+                `tabShift Assignment`.end_date,
+                `tabShift Assignment`.status,
+                `tabShift Assignment`.custom_published,
+                `tabShift Assignment`.company,
+                `tabShift Assignment`.department,
+                `tabShift Assignment`.color
+            FROM 
+                `tabShift Assignment`
+            WHERE 
+                {where_clause}
+                AND (
+                    (`tabShift Assignment`.start_date BETWEEN %(start)s AND %(end)s)
+                    OR (`tabShift Assignment`.end_date BETWEEN %(start)s AND %(end)s)
+                    OR (`tabShift Assignment`.start_date <= %(start)s AND `tabShift Assignment`.end_date >= %(end)s)
+                )
+            ORDER BY 
+                `tabShift Assignment`.start_date, 
+                `tabShift Assignment`.employee_name
+        """, values, as_dict=True)
+    except Exception as e:
+        # Log error properly instead of printing
+        frappe.log_error(
+            message=f"Roster Query Error: {str(e)}\nFilters: {filters}",
+            title="Pro Coaching - Roster Query Failed"
+        )
+        return []
     
     # 7. Format Events
     events = []
@@ -114,9 +140,9 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
         
         # Color Logic: Green for Published, Orange for Unpublished
         if shift.custom_published:
-             bg_color = '#28a745' # Green
+            bg_color = '#28a745'  # Green
         else:
-             bg_color = '#fd7e14' # Orange
+            bg_color = '#fd7e14'  # Orange
 
         event = {
             'name': shift.name,
