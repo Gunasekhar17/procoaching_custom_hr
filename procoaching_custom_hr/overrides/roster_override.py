@@ -3,47 +3,64 @@ from frappe import _
 import json
 
 @frappe.whitelist()
-def get_events(start, end, filters=None):
+def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
     """
-    Roster Override Logic:
-    1. HR Managers / System Managers: View ALL shifts (Published & Unpublished).
-       - Published = Green
-       - Unpublished = Orange
-    2. Staff / Employees: View ONLY Published shifts.
-       - Unpublished shifts are strictly hidden via SQL.
+    Robust Version: Handles both 'start/end' (Standard Calendar) and 'month_start/month_end' (Roster API).
     """
     
-    # Get current user and roles
+    # 1. ARGUMENT NORMALIZATION (The Fix for your TypeError)
+    # The Roster API sends month_start/month_end. We map them to start/end.
+    if not start and month_start:
+        start = month_start
+    if not end and month_end:
+        end = month_end
+
+    # If we still don't have dates, return empty to prevent crash
+    if not start or not end:
+        return []
+
+    # 2. Get current user and roles
     user = frappe.session.user
     user_roles = frappe.get_roles(user)
     
-    # DEFINITION: Who sees Unpublished (Orange) shifts?
-    # HR Manager, System Manager, Administrator, Shift Manager
+    # DEFINITION OF MANAGER
     management_roles = ['HR Manager', 'System Manager', 'Administrator', 'Shift Manager']
     has_management_access = any(role in management_roles for role in user_roles)
     
-    # Parse filters
-    if isinstance(filters, str):
+    # 3. Parse Filters
+    # The Roster API sends filters inside 'employee_filters' or 'shift_filters' dictionaries.
+    # We merge them into a single 'filters' dict for easier processing.
+    if not filters:
+        filters = {}
+    elif isinstance(filters, str):
         try:
             filters = json.loads(filters)
         except:
             filters = {}
-    elif not filters:
-        filters = {}
+
+    # Merge Roster API specific filters if they exist
+    if employee_filters:
+        if isinstance(employee_filters, str):
+            employee_filters = json.loads(employee_filters)
+        filters.update(employee_filters)
+        
+    if shift_filters:
+        if isinstance(shift_filters, str):
+            shift_filters = json.loads(shift_filters)
+        filters.update(shift_filters)
     
-    # Build base conditions
+    # 4. Build base conditions
     conditions = [
         "`tabShift Assignment`.docstatus < 2",
         "`tabShift Assignment`.status = 'Active'"
     ]
     
-    # CRITICAL LOGIC: Staff Visibility
-    # If the user is NOT a manager, enforce that they can only see Published shifts.
-    # We use IFNULL to treat NULL (untouched checkboxes) as 0 (Unpublished).
+    # CRITICAL: Publication filter for non-managers
+    # IFNULL checks if the checkbox is NULL (untouched) and treats it as 0 (Hidden)
     if not has_management_access:
         conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
     
-    # Add optional filters from roster UI
+    # 5. Apply SQL Filters
     if filters.get('company'):
         conditions.append(f"`tabShift Assignment`.company = {frappe.db.escape(filters.get('company'))}")
     if filters.get('department'):
@@ -55,10 +72,11 @@ def get_events(start, end, filters=None):
     if filters.get('shift_type'):
         conditions.append(f"`tabShift Assignment`.shift_type = {frappe.db.escape(filters.get('shift_type'))}")
     
-    # Build WHERE clause
     where_clause = " AND ".join(conditions)
     
-    # Fetch shifts WITHOUT the missing custom columns (to prevent 500 errors)
+    # 6. Fetch Data
+    # Note: We do NOT fetch custom_first_aider etc. here to avoid 500 errors if fields are missing.
+    # We strictly focus on the 'custom_published' column.
     shifts = frappe.db.sql(f"""
         SELECT 
             `tabShift Assignment`.name,
@@ -89,20 +107,17 @@ def get_events(start, end, filters=None):
         'end': end
     }, as_dict=True)
     
-    # Format events for calendar display
+    # 7. Format Events
     events = []
     for shift in shifts:
-        # Combined Title
         title = f"{shift.employee_name} ({shift.shift_type})"
         
-        # Determine Color
-        # Green (#28a745) for published, Orange (#fd7e14) for unpublished
+        # Color Logic: Green for Published, Orange for Unpublished
         if shift.custom_published:
              bg_color = '#28a745' # Green
         else:
              bg_color = '#fd7e14' # Orange
 
-        # Create event
         event = {
             'name': shift.name,
             'id': shift.name,
