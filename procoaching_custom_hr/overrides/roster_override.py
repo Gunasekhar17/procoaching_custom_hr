@@ -53,6 +53,7 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
         'end': end
     }
     
+    # Filter for employees - only show published shifts
     if not has_management_access:
         conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
     
@@ -79,6 +80,7 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     where_clause = " AND ".join(conditions)
     
     try:
+        # FIXED: Removed 'color' field that doesn't exist
         shifts = frappe.db.sql(f"""
             SELECT 
                 `tabShift Assignment`.name,
@@ -90,8 +92,7 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
                 `tabShift Assignment`.status,
                 `tabShift Assignment`.custom_published,
                 `tabShift Assignment`.company,
-                `tabShift Assignment`.department,
-                `tabShift Assignment`.color
+                `tabShift Assignment`.department
             FROM 
                 `tabShift Assignment`
             WHERE 
@@ -116,10 +117,11 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     for shift in shifts:
         title = f"{shift.employee_name} ({shift.shift_type})"
         
+        # Color coding: Green for published, Orange for unpublished
         if shift.custom_published:
-            bg_color = '#28a745'
+            bg_color = '#28a745'  # Green
         else:
-            bg_color = '#fd7e14'
+            bg_color = '#fd7e14'  # Orange
 
         event = {
             'name': shift.name,
