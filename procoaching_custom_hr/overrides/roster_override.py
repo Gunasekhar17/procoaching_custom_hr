@@ -4,6 +4,24 @@ import json
 
 @frappe.whitelist()
 def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
+    """
+    Get roster events with role-based filtering.
+    
+    Management roles (HR Manager, System Manager, Administrator, Shift Manager) see all shifts.
+    Regular employees only see shifts marked as published (custom_published = 1).
+    
+    Args:
+        start: Start date for event range
+        end: End date for event range
+        month_start: Alternative start date parameter
+        month_end: Alternative end date parameter
+        filters: General filters (dict or JSON string)
+        employee_filters: Employee-specific filters (dict or JSON string)
+        shift_filters: Shift-specific filters (dict or JSON string)
+        
+    Returns:
+        list: List of shift events formatted for calendar display
+    """
     
     if not start and month_start:
         start = month_start
@@ -80,7 +98,6 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     where_clause = " AND ".join(conditions)
     
     try:
-        # FIXED: Removed 'color' field that doesn't exist
         shifts = frappe.db.sql(f"""
             SELECT 
                 `tabShift Assignment`.name,
