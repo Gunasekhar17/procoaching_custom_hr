@@ -5,7 +5,7 @@ app_description = "Custom HR modifications for roster filtering"
 app_email = "info@pro-coaching.co.uk"
 app_license = "MIT"
 
-# Override HRMS roster API to filter shifts based on user role
+# Use ONLY hooks - no monkey-patching!
 override_whitelisted_methods = {
     "hrms.api.roster.get_events": "procoaching_custom_hr.overrides.roster_override.get_events"
 }
