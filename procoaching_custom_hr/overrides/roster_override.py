@@ -6,21 +6,7 @@ import json
 def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
     """
     Get roster events with role-based filtering.
-    
-    Management roles (HR Manager, System Manager, Administrator, Shift Manager) see all shifts.
-    Regular employees only see shifts marked as published (custom_published = 1).
-    
-    Args:
-        start: Start date for event range
-        end: End date for event range
-        month_start: Alternative start date parameter
-        month_end: Alternative end date parameter
-        filters: General filters (dict or JSON string)
-        employee_filters: Employee-specific filters (dict or JSON string)
-        shift_filters: Shift-specific filters (dict or JSON string)
-        
-    Returns:
-        list: List of shift events formatted for calendar display
+    Management roles see all shifts. Regular employees only see published shifts.
     """
     
     if not start and month_start:
@@ -71,7 +57,6 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
         'end': end
     }
     
-    # Filter for employees - only show published shifts
     if not has_management_access:
         conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
     
@@ -134,11 +119,10 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     for shift in shifts:
         title = f"{shift.employee_name} ({shift.shift_type})"
         
-        # Color coding: Green for published, Orange for unpublished
         if shift.custom_published:
-            bg_color = '#28a745'  # Green
+            bg_color = '#28a745'
         else:
-            bg_color = '#fd7e14'  # Orange
+            bg_color = '#fd7e14'
 
         event = {
             'name': shift.name,
@@ -148,8 +132,8 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
             'employee': shift.employee,
             'employee_name': shift.employee_name,
             'shift_type': shift.shift_type,
-            'start': str(shift.start_date),
-            'end': str(shift.end_date),
+            'start': shift.start_date,  # Return as date object
+            'end': shift.end_date,      # Return as date object  
             'allDay': True,
             'doctype': 'Shift Assignment',
             'status': shift.status,
