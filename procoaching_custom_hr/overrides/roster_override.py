@@ -4,10 +4,6 @@ import json
 
 @frappe.whitelist()
 def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
-    """
-    Get roster events with role-based filtering.
-    Management roles see all shifts. Regular employees only see published shifts.
-    """
     
     if not start and month_start:
         start = month_start
@@ -94,7 +90,8 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
                 `tabShift Assignment`.status,
                 `tabShift Assignment`.custom_published,
                 `tabShift Assignment`.company,
-                `tabShift Assignment`.department
+                `tabShift Assignment`.department,
+                `tabShift Assignment`.shift_location
             FROM 
                 `tabShift Assignment`
             WHERE 
@@ -118,11 +115,6 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     events = []
     for shift in shifts:
         title = f"{shift.employee_name} ({shift.shift_type})"
-        
-        if shift.custom_published:
-            bg_color = '#28a745'
-        else:
-            bg_color = '#fd7e14'
 
         event = {
             'name': shift.name,
@@ -132,14 +124,12 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
             'employee': shift.employee,
             'employee_name': shift.employee_name,
             'shift_type': shift.shift_type,
-            'start': shift.start_date,  # Return as date object
-            'end': shift.end_date,      # Return as date object  
+            'shift_location': shift.shift_location or '',
+            'start': shift.start_date,
+            'end': shift.end_date,
             'allDay': True,
             'doctype': 'Shift Assignment',
-            'status': shift.status,
-            'backgroundColor': bg_color,
-            'borderColor': bg_color,
-            'textColor': '#ffffff'
+            'status': shift.status
         }
         events.append(event)
     
