@@ -1,88 +1,126 @@
+import frappe
+from frappe import _
+import json
+
 @frappe.whitelist()
 def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
-    import json
     
-    # --- 1. Date Logic ---
-    if not start and month_start: start = month_start
-    if not end and month_end: end = month_end
-    if not start or not end: return []
+    
+    # Handle date parameters
+    if not start and month_start:
+        start = month_start
+    if not end and month_end:
+        end = month_end
+    if not start or not end:
+        return []
 
-    # --- 2. Filter Parsing (Safe Method) ---
-    def parse_json(f):
-        if not f: return {}
-        if isinstance(f, str):
-            try: return json.loads(f)
-            except: return {}
-        return f
+    # --- 1. Filter Parsing ---
+    if not filters:
+        filters = {}
+    elif isinstance(filters, str):
+        try:
+            filters = json.loads(filters)
+        except:
+            filters = {}
 
-    filters = parse_json(filters)
-    filters.update(parse_json(employee_filters))
-    filters.update(parse_json(shift_filters))
+    if employee_filters:
+        if isinstance(employee_filters, str):
+            try:
+                employee_filters = json.loads(employee_filters)
+            except:
+                employee_filters = {}
+        filters.update(employee_filters)
 
-    # --- 3. Build Conditions ---
-    conditions = ["`tabShift Assignment`.docstatus < 2", "`tabShift Assignment`.status = 'Active'"]
+    if shift_filters:
+        if isinstance(shift_filters, str):
+            try:
+                shift_filters = json.loads(shift_filters)
+            except:
+                shift_filters = {}
+        filters.update(shift_filters)
+
+    # --- 2. Build Conditions ---
+    conditions = [
+        "`tabShift Assignment`.docstatus < 2",
+        "`tabShift Assignment`.status = 'Active'"
+    ]
     values = {'start': start, 'end': end}
 
-    # Permissions Check
+    # Check user permissions
     user = frappe.session.user
-    if user != 'Administrator':
-        roles = frappe.get_roles(user)
-        management_roles = ['HR Manager', 'System Manager', 'Administrator', 'Shift Manager']
-        if not any(r in management_roles for r in roles):
-            conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
+    user_roles = frappe.get_roles(user)
+    management_roles = ['HR Manager', 'System Manager', 'Administrator', 'Shift Manager']
+    has_management_access = any(role in management_roles for role in user_roles)
 
-    # Apply Filters
-    for field in ['company', 'department', 'designation', 'employee', 'shift_type']:
+    # Non-management users can only see published shifts
+    if not has_management_access:
+        conditions.append("IFNULL(`tabShift Assignment`.custom_published, 0) = 1")
+
+    # Dynamic filters for company, department, employee, shift_type
+    for field in ['company', 'department', 'employee', 'shift_type']:
         if filters.get(field):
             conditions.append(f"`tabShift Assignment`.{field} = %({field})s")
             values[field] = filters.get(field)
 
     where_clause = " AND ".join(conditions)
 
-    # --- 4. Fetch Shifts (Standard Query - NO JOIN to avoid crashes) ---
+    # --- 3. SQL QUERY ---
     try:
         shifts = frappe.db.sql(f"""
             SELECT 
-                name, employee, employee_name, shift_type, start_date, end_date,
-                status, company, department, shift_location
-            FROM `tabShift Assignment`
-            WHERE {where_clause}
-            AND (
-                (start_date BETWEEN %(start)s AND %(end)s) OR 
-                (end_date BETWEEN %(start)s AND %(end)s) OR 
-                (start_date <= %(start)s AND end_date >= %(end)s)
-            )
-            ORDER BY start_date, employee_name
+                `tabShift Assignment`.name,
+                `tabShift Assignment`.employee,
+                `tabShift Assignment`.employee_name,
+                `tabShift Assignment`.shift_type,
+                `tabShift Assignment`.start_date,
+                `tabShift Assignment`.end_date,
+                `tabShift Assignment`.status,
+                `tabShift Assignment`.custom_published,
+                `tabShift Assignment`.company,
+                `tabShift Assignment`.department,
+                `tabShift Assignment`.shift_location
+            FROM 
+                `tabShift Assignment`
+            WHERE 
+                {where_clause}
+                AND (
+                    (`tabShift Assignment`.start_date BETWEEN %(start)s AND %(end)s)
+                    OR (`tabShift Assignment`.end_date BETWEEN %(start)s AND %(end)s)
+                    OR (`tabShift Assignment`.start_date <= %(start)s AND `tabShift Assignment`.end_date >= %(end)s)
+                )
+            ORDER BY 
+                `tabShift Assignment`.start_date, 
+                `tabShift Assignment`.employee_name
         """, values, as_dict=True)
     except Exception as e:
-        frappe.log_error(f"Roster Query Failed: {str(e)}", "Roster Error")
+        frappe.log_error(f"Roster Query Error: {str(e)}\nFilters: {filters}", "Pro Coaching Roster Error")
         return []
-
-    # --- 5. Fetch Colors Safely (The Fix) ---
-    # We fetch colors separately to handle different column names (color vs custom_color)
+    
+    # Get colors from Shift Type (if field exists)
     shift_colors = {}
     try:
-        # Try standard field name
-        types = frappe.get_all("Shift Type", fields=["name", "color"])
-        for t in types: shift_colors[t.name] = t.get("color")
-    except:
-        try:
-            # Fallback to custom field name
-            types = frappe.get_all("Shift Type", fields=["name", "custom_color"])
-            for t in types: shift_colors[t.name] = t.get("custom_color")
-        except:
-            pass 
+        if shifts:
+            shift_types = list(set([s.shift_type for s in shifts]))
+            colors = frappe.db.get_all('Shift Type', 
+                                       filters={'name': ['in', shift_types]},
+                                       fields=['name', 'color'])
+            shift_colors = {c.name: c.color for c in colors if c.color}
+    except Exception:
+        # If color field doesn't exist, just use default colors
+        pass
 
-    # --- 6. Format Response ---
+    # --- 4. Format Response ---
     events = []
     for shift in shifts:
         title = f"{shift.employee_name} ({shift.shift_type})"
         
-        # 1. Get Color (Use default Blue if missing to prevent crash)
-        assigned_color = shift_colors.get(shift.shift_type)
-        if not assigned_color:
-            assigned_color = '#3788d8' 
-
+        # Safe Date Conversion (Prevent JSON serialization errors)
+        s_date = str(shift.start_date)
+        e_date = str(shift.end_date)
+        
+        # Get color from shift_colors dict or use default
+        color = shift_colors.get(shift.shift_type, '#3788d8')
+        
         event = {
             'name': shift.name,
             'id': shift.name,
@@ -92,12 +130,12 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
             'employee_name': shift.employee_name,
             'shift_type': shift.shift_type,
             'shift_location': shift.shift_location or '',
-            'start': str(shift.start_date),
-            'end': str(shift.end_date),
+            'start': s_date,
+            'end': e_date,
             'allDay': True,
             'doctype': 'Shift Assignment',
             'status': shift.status,
-            'color': assigned_color # This is now guaranteed to have a value
+            'color': color
         }
         events.append(event)
 
