@@ -11,15 +11,24 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
     # Get the standard HRMS events first
     # IMPORTANT: HRMS returns a DICT grouped by employee_id, NOT a flat list!
     # Structure: {"HR-EMP-00164": [{event}, {event}], "HR-EMP-00165": [{event}]}
-    events = hrms_get_events(
-        start=start, 
-        end=end, 
-        month_start=month_start, 
-        month_end=month_end, 
-        filters=filters, 
-        employee_filters=employee_filters, 
-        shift_filters=shift_filters
-    )
+    # Build kwargs dict, only including non-None values to satisfy type validation
+    kwargs = {}
+    if start is not None:
+        kwargs['start'] = start
+    if end is not None:
+        kwargs['end'] = end
+    if month_start is not None:
+        kwargs['month_start'] = month_start
+    if month_end is not None:
+        kwargs['month_end'] = month_end
+    if filters is not None:
+        kwargs['filters'] = filters
+    if employee_filters is not None:
+        kwargs['employee_filters'] = employee_filters
+    if shift_filters is not None:
+        kwargs['shift_filters'] = shift_filters
+    
+    events = hrms_get_events(**kwargs)
     
     # Check if user has management access
     user = frappe.session.user
