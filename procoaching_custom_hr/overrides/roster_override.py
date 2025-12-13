@@ -4,8 +4,6 @@ import json
 
 @frappe.whitelist()
 def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
-   
-    
     try:
         # --- 1. Handle date parameters ---
         if not start and month_start:
@@ -119,6 +117,10 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
                 # Required identifier fields
                 'name': shift.get('name') or '',
                 'id': shift.get('name') or '',
+
+                # --- CRITICAL FIX: RESOURCE MAPPING ---
+                'resourceId': shift.get('employee') or '',
+                # --------------------------------------
                 
                 # Display fields
                 'title': f"{shift.get('employee_name', 'Unknown')} ({shift.get('shift_type', 'No Shift')})",
@@ -149,7 +151,7 @@ def get_events(start=None, end=None, month_start=None, month_end=None, filters=N
             if event['name'] and event['start'] and event['end']:
                 events.append(event)
 
-        frappe.logger().info(f"[Pro Coaching Roster] Returning {len(events)} events")
+        # frappe.logger().info(f"[Pro Coaching Roster] Returning {len(events)} events")
         return events
 
     except Exception as e:
@@ -175,7 +177,7 @@ def _parse_json_filter(filter_str):
         try:
             return json.loads(filter_str)
         except json.JSONDecodeError:
-            frappe.logger().warning(f"Invalid JSON filter: {filter_str}")
+            # frappe.logger().warning(f"Invalid JSON filter: {filter_str}")
             return None
     
     return None
@@ -212,5 +214,5 @@ def _get_shift_colors(shifts):
         return shift_colors
     
     except Exception as e:
-        frappe.logger().warning(f"Error fetching shift colors: {str(e)}")
+        # frappe.logger().warning(f"Error fetching shift colors: {str(e)}")
         return {}
