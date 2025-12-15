@@ -7,11 +7,6 @@ from hrms.api.roster import get_events as hrms_get_events
 @frappe.whitelist()
 def get_events(start=None, end=None, month_start=None, month_end=None, filters=None, employee_filters=None, shift_filters=None):
    
-    
-    # Get the standard HRMS events first
-    # IMPORTANT: HRMS returns a DICT grouped by employee_id, NOT a flat list!
-    # Structure: {"HR-EMP-00164": [{event}, {event}], "HR-EMP-00165": [{event}]}
-    # Build kwargs dict, only including non-None values to satisfy type validation
     kwargs = {}
     if start is not None:
         kwargs['start'] = start
